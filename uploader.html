@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>    
+	<title>Codifyr - compiler</title>    
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />    
+	<script src="/_utils/script/json2.js"></script>    
+	<script src="/_utils/script/sha1.js"></script>    
+	<script src="/_utils/script/jquery.js?1.4.2"></script>    
+	<script src="/_utils/script/jquery.couch.js?0.11.0"></script>    
+	<script src="/_utils/script/jquery.dialog.js?0.11.0"></script>    
+	<style type="text/css">
+	        .level_0 {background-color:lightyellow;}
+	        .level_n1 {background-color:lightcoral;}        
+	        .level_1 {background-color:lightgreen;}    
+	</style>
+</head>
+    <body>    
+    	<center>        
+			<br><br>Updating ...<br><br>
+			<div id="logger"></div>
+			<br><br>        
+			<a href="#" onclick="openPreview()">open preview</a>    
+    	</center>    
+    <script>    
+    
+	    addEventListener("message", function(e) { 
+	    	handleMessage(JSON.parse(e.data));
+	    }, false);
+
+	    function handleMessage(data) {        
+	    	var username = data.username;        
+	    	var password = data.password;        
+	    	preview_file = data.preview;        
+	    	database = data.database;        
+	    	ddoc = data.ddoc;        
+	    	files = data.files;        
+	    	if (username){            
+	    		$.couch.login({
+		    			name: username, 
+		    			password: password, 
+		    			success: function(data) {                    
+		    				log("Login successfull with " + username + " " + JSON.stringify(data), 1, "CouchDB Compiler");                    
+		    				updateDocument(ddoc, database, function() {                        
+		    					updateAttachments(database, ddoc._id, files);                    
+		    				});                
+			    		},
+			    		error: function(status) {                    
+			    			log("Login failed with " + username + " " + JSON.stringify(status), -1, "CouchDB Compiler");                    
+			    			$.couch.info({success: function(data) {                            
+			    				log("Server used is " + JSON.stringify(data), 1, "CouchDB Compiler");                        
+			    			}
+		    			});                
+					}            
+		    	});                
+		    } else {            
+		    	updateDocument(ddoc, database, function() {                
+		    		updateAttachments(database, ddoc._id, files);            
+		    	});        
+		    }    
+		}
+		/*a = {"files":[{"name":"file-name.js", "content":"contenst for js", "content_type":"text/html"}], "document":{"_id": "_design/preview", "mydata":"value"}}sessionStorage.setItem("compiled_couchdb", JSON.stringify(a))*/        
+
+		function updateDocument(ddoc, db_name, fn_update_attachments) {        
+			var doc = ddoc;        
+			var db = $.couch.db(db_name);        
+			db.openDoc(doc._id, {success: function(old_doc) {                
+				var ftime = new Date().getTime();                
+				log("Design document fetched ", 0, "CouchDB Compiler", ftime);                
+				doc._rev = old_doc._rev;                
+				db.saveDoc(doc, {success: function(new_doc) {                        
+					log("Design document updated ", 1, "CouchDB Compiler", ftime);                        
+					fn_update_attachments();                    
+				},error: function(status) {                        
+					log("Design document failed update " + JSON.stringify(status), -1, "CouchDB Compiler", ftime);                    
+				}});            
+			},error: function(status) {                
+				var ftime = new Date().getTime();                
+				db.saveDoc(doc, {success: function(data) {                        
+					log("Design document created ", 0, "CouchDB Compiler", ftime);                        
+					fn_update_attachments();                    
+				},error: function(status) {                        
+					log("Design document failed creation ", -1, "CouchDB Compiler");                    
+				}});            
+			}});    
+		};    
+		function updateAttachments(database, document_id, files) {        
+			window.file_index = 0;        
+			var f = files[window.file_index];        
+			uploadFile(database, document_id, f.name, f.content_type, f.content);    
+		};    
+
+		var uploadFile = function(database_name, document_id, file_name, file_type, file_content) {        
+			var ftime = new Date().getTime();        
+			log("Fetching " + file_name, 0, "CouchDB Compiler", ftime);        
+			var baseUrl = "/" + database_name + "/";        
+			var name = encodeURIComponent(file_name), type = file_type, fileReader = new FileReader(), getRequest = new XMLHttpRequest(), putRequest = new XMLHttpRequest();        
+			var url = baseUrl + document_id;        
+			log("Document attachment using URL " + url, 0, "CouchDB Compiler");        
+			getRequest.open("GET", url, true);        
+			getRequest.send();        
+			getRequest.onreadystatechange = function(response) {            
+				var fftime = ftime;            
+				if (getRequest.readyState == 4 && getRequest.status == 200) {                
+					log("Updating " + file_name, 0, "CouchDB Compiler");                
+					var doc = JSON.parse(getRequest.responseText);                
+					putRequest.open("PUT", baseUrl + encodeURIComponent(document_id) + "/" + name + "?rev=" + doc._rev, true);                
+					putRequest.setRequestHeader("Content-Type", type);                
+					putRequest.send(file_content);                
+					putRequest.onreadystatechange = function(response) {                    
+						if (putRequest.readyState == 4) {                        
+							console.log(putRequest);                        
+							log("Updated " + file_name, 1, "CouchDB Compiler", ftime);                        
+							window.file_index = window.file_index + 1;                        
+							if (files.length > window.file_index){                            
+								var f = files[window.file_index];                            
+								uploadFile(database, document_id, f.name, f.content_type, f.content);                        
+							}                    
+						}                
+					};            
+				}            
+				if (getRequest.readyState == 4 && getRequest.status == 409) {                
+					log("Failed " + file_name, -1, "CouchDB Compiler", ftime);            
+				}        
+			};    
+		};    
+
+		function log(msg, level, title, state_id) {        
+			console.info(msg);        
+			if (document.editor) {            
+				document.editor.consoleOutput({"message": msg, "level": level, "title": title});        
+			}        
+			if (state_id) {            
+				var d = $("#" + state_id);            
+				if (d.length) {                
+					d.html(msg);            
+				} else {                
+					d = $("#logger").append("<div id=" + state_id + ">" + msg + "</div>");            
+				}            
+				if (level ==-1){ d.addClass("level_n1"); }            
+				if (level == 0){ d.addClass("level_0"); }            
+				if (level == 1){ d.addClass("level_1"); }        
+			}    
+		}    
+		function openPreview() {        
+			location.href = preview_file;    
+		} /* test data */    
+	</script>
+</body>
+</html>  
