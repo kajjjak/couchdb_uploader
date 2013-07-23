@@ -66,7 +66,8 @@
 			db.openDoc(doc._id, {success: function(old_doc) {                
 				var ftime = new Date().getTime();                
 				log("Design document fetched ", 0, "CouchDB Compiler", ftime);                
-				doc._rev = old_doc._rev;                
+				doc._rev = old_doc._rev;
+				doc._attachments = JSON.parse(JSON.stringify(old_doc._attachments));
 				db.saveDoc(doc, {success: function(new_doc) {                        
 					log("Design document updated ", 1, "CouchDB Compiler", ftime);                        
 					fn_update_attachments();                    
@@ -98,6 +99,7 @@
 			log("Document attachment using URL " + url, 0, "CouchDB Compiler");        
 			getRequest.open("GET", url, true);        
 			getRequest.send();        
+			
 			getRequest.onreadystatechange = function(response) {            
 				var fftime = ftime;            
 				if (getRequest.readyState == 4 && getRequest.status == 200) {                
