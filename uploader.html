@@ -11,12 +11,12 @@
 	<style type="text/css">
 	        .level_0 {background-color:lightyellow;} 
 	        .level_n1 {background-color:lightcoral;}        
-	        .level_1 {background-color:lightgreen;}    
+	        .level_1 {background-color:lightgreen;}     
 	</style>
 </head>
     <body>    
     	<center>        
-			<br><br>Updating ...<br><br>
+			<br><br>Updating <span id="progress">0</span>%<br><br>
 			<div id="logger"></div>
 			<br><br>        
 			<a href="#" onclick="openPreview()">open preview</a>    
@@ -24,19 +24,19 @@
     <script>    
 	    /*
 	    TODO: 
-	    	- utf8
-	    	- support smart update (only upload ddoc if is supplied)
-	    	- nice design
-	    	- auto load the preview when done
+	    	- utf8 - DONE
+	    	- support smart update (only upload ddoc if is supplied) -DONE
+	    	
 	    	- show percentage of upload
+	    	- auto load the preview when done
 	    */
-  		/* Test data */
+  		/* Test data *
   		test_files = [
-  			{"name":"file-name.js", "content":"æðislegt fjör því gaman er", "content_type":"text/html"}
+  			{"name":"file-name.js", "content":"æðislegt fjör því gaman er", "content_type":"text/html"},
+  			{"name":"file_2.js", "content":"Super coole", "content_type":"text/html"}
   		];
-  		test_ddoc = null; //{_id:"_design/test_upload"};
+  		test_ddoc = {_id:"_design/test_upload"};
   		test_data = {ddoc: test_ddoc, files: test_files, database: "couchdb_test", id: "_design/test_upload"};
-  		//sessionStorage.setItem("compiled_couchdb", JSON.stringify(a))
   		setTimeout(function(){
   			handleMessage(test_data);
   		}, 1000);
@@ -50,12 +50,18 @@
 
 	    function handleMessage(data) {        
 	    	var username = data.username;        
-	    	var password = data.password;   
+	    	var password = data.password;
 	    	var document_id = data.id;
-	    	preview_file = data.preview;        
+	    	window.preview_file = data.preview;        
 	    	database = data.database;        
-	    	ddoc = data.ddoc;        
-	    	files = data.files;        
+	    	ddoc = data.ddoc;
+	    	if(ddoc){
+	    		ddoc._id = document_id;
+	    	}
+	    	window.file_index = 0;
+	    	window.files = data.files;
+	    	window.updated_ddoc = 0;
+	    	window.update_ddoc = 1;
 	    	if (username){            
 	    		$.couch.login({
 		    			name: username, 
@@ -63,8 +69,8 @@
 		    			success: function(data) {                    
 		    				log("Login successfull with " + username + " " + JSON.stringify(data), 1, "CouchDB Compiler");                    
 		    				updateDocument(ddoc, database, function() {                        
-		    					updateAttachments(database, ddoc._id, files);                    
-		    				});                
+		    					updateAttachments(database, document_id, files);                    
+		    				});
 			    		},
 			    		error: function(status) {                    
 			    			log("Login failed with " + username + " " + JSON.stringify(status), -1, "CouchDB Compiler");                    
@@ -94,7 +100,8 @@
 					}
 					db.saveDoc(doc, {success: function(new_doc) {                        
 						log("Design document updated ", 1, "CouchDB Compiler", ftime);                        
-						fn_update_attachments();                    
+						window.updated_ddoc = 1;
+						fn_update_attachments(); 
 					},error: function(status) {                        
 						log("Design document failed update " + JSON.stringify(status), -1, "CouchDB Compiler", ftime);                    
 					}});            
@@ -102,12 +109,14 @@
 					var ftime = new Date().getTime();                
 					db.saveDoc(doc, {success: function(data) {                        
 						log("Design document created ", 1, "CouchDB Compiler", ftime);                        
+						window.updated_ddoc = 1;
 						fn_update_attachments();                    
 					},error: function(status) {                        
 						log("Design document failed creation ", -1, "CouchDB Compiler");                    
 					}});            
 				}});
 			} else {
+				window.update_ddoc = 0;
 				fn_update_attachments();
 			}
 		};    
@@ -135,9 +144,7 @@
 					log("Updating " + file_name, 0, "CouchDB Compiler");                
 					var doc = JSON.parse(getRequest.responseText);                
 					putRequest.open("PUT", baseUrl + encodeURIComponent(document_id) + "/" + name + "?rev=" + doc._rev, true);                
-					//putRequest.setRequestHeader("Content-Type", "text/plain;charset=UTF-8");
 					putRequest.setRequestHeader("Content-Type", type+";charset=utf-8");
-					//putRequest.setRequestHeader("Content-type","application/x-www-form-urlencoded");
 					putRequest.send(file_content);
 					putRequest.onreadystatechange = function(response) {                    
 						if (putRequest.readyState == 4) {                        
@@ -163,20 +170,27 @@
 				document.editor.consoleOutput({"message": msg, "level": level, "title": title});        
 			}        
 			if (state_id) {            
-				var d = $("#" + state_id);            
+				var progress = Math.ceil(((window.file_index+updated_ddoc+1)/(files.length+update_ddoc)) * 100);
+				if(level){$("#progress").html(progress);}
+				var d = $("#" + state_id);
 				if (d.length) {                
 					d.html(msg);            
 				} else {                
 					d = $("#logger").append("<div id=" + state_id + ">" + msg + "</div>");            
-				}            
+				}
 				if (level ==-1){ d.addClass("level_n1"); }            
 				if (level == 0){ d.addClass("level_0"); }            
-				if (level == 1){ d.addClass("level_1"); }        
+				if (level == 1){ d.addClass("level_1"); }
+				if (progress == 100){
+					setTimeout(function(){window.location.href = window.preview_file;}, 1000);
+				}
 			}    
-		}    
+		}
+		
 		function openPreview() {        
 			location.href = preview_file;    
-		} /* test data */    
+		}
+		
 	</script>
 </body>
 </html>  
